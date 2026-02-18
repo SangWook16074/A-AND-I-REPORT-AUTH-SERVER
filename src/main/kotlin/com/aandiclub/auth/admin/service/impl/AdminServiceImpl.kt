@@ -69,6 +69,26 @@ class AdminServiceImpl(
 				}
 			}
 
+	override fun deleteUser(targetUserId: UUID, actorUserId: UUID): Mono<Void> {
+		if (targetUserId == actorUserId) {
+			return Mono.error(AppException(ErrorCode.FORBIDDEN, "Admin cannot delete own account."))
+		}
+
+		return userRepository.findById(targetUserId)
+			.switchIfEmpty(Mono.error(AppException(ErrorCode.NOT_FOUND, "User not found.")))
+			.flatMap { user ->
+				userInviteRepository.findByUserIdOrderByCreatedAtDesc(requireNotNull(user.id))
+					.concatMap { inviteTokenCacheService.deleteToken(it.tokenHash) }
+					.then(userRepository.deleteById(requireNotNull(user.id)))
+					.then(
+						Mono.fromRunnable {
+							logger.warn("security_audit event=admin_user_deleted user_id={} username={}", user.id, user.username)
+						},
+					)
+					.then()
+			}
+	}
+
 	private fun createPasswordProvisionedUser(
 		username: String,
 		request: CreateAdminUserRequest,

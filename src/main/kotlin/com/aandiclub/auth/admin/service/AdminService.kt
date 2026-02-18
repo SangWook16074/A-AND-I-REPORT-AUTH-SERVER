@@ -11,4 +11,5 @@ interface AdminService {
 	fun getUsers(): Mono<List<AdminUserSummary>>
 	fun createUser(request: CreateAdminUserRequest): Mono<CreateAdminUserResponse>
 	fun resetPassword(userId: UUID): Mono<ResetPasswordResponse>
+	fun deleteUser(targetUserId: UUID, actorUserId: UUID): Mono<Void>
 }

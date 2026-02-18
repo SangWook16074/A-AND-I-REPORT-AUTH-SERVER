@@ -19,6 +19,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
@@ -212,5 +213,42 @@ class AdminServiceImplTest : FunSpec({
 				users[1].role shouldBe UserRole.ADMIN
 			}
 			.verifyComplete()
+	}
+
+	test("deleteUser should delete target user and cleanup invite tokens") {
+		val actorId = UUID.randomUUID()
+		val targetId = UUID.randomUUID()
+		val targetUser = UserEntity(
+			id = targetId,
+			username = "user_delete",
+			passwordHash = "h1",
+			role = UserRole.USER,
+		)
+		val invite = UserInviteEntity(
+			id = UUID.randomUUID(),
+			userId = targetId,
+			tokenHash = "invite-hash-delete",
+			expiresAt = Instant.parse("2026-02-20T00:00:00Z"),
+			createdAt = Instant.parse("2026-02-18T00:00:00Z"),
+		)
+
+		every { userRepository.findById(targetId) } returns Mono.just(targetUser)
+		every { userInviteRepository.findByUserIdOrderByCreatedAtDesc(targetId) } returns Flux.just(invite)
+		every { inviteTokenCacheService.deleteToken("invite-hash-delete") } returns Mono.just(true)
+		every { userRepository.deleteById(targetId) } returns Mono.empty()
+
+		StepVerifier.create(service.deleteUser(targetId, actorId))
+			.verifyComplete()
+
+		verify(exactly = 1) { userRepository.deleteById(targetId) }
+	}
+
+	test("deleteUser should reject self deletion") {
+		val adminId = UUID.randomUUID()
+		StepVerifier.create(service.deleteUser(adminId, adminId))
+			.expectErrorSatisfies { ex ->
+				(ex as com.aandiclub.auth.common.error.AppException).errorCode shouldBe com.aandiclub.auth.common.error.ErrorCode.FORBIDDEN
+			}
+			.verify()
 	}
 })
