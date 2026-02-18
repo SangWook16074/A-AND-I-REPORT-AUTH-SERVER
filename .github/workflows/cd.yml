@@ -180,6 +180,26 @@ jobs:
             IMAGE_URI="${IMAGE_URI}" \
             POSTGRES_DB="${POSTGRES_DB}" \
             POSTGRES_USER="${POSTGRES_USER}" \
+            POSTGRES_PASSWORD="${POSTGRES_PASSWORD}" \
+            REDIS_PASSWORD="${REDIS_PASSWORD}" \
+            docker compose up -d postgres redis
+
+            # Guarantee required schema exists before auth startup.
+            docker exec -i auth-postgres psql -v ON_ERROR_STOP=1 -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" <<'SQL'
+            CREATE TABLE IF NOT EXISTS users (
+              id UUID PRIMARY KEY,
+              username VARCHAR(64) NOT NULL UNIQUE,
+              password_hash VARCHAR(255) NOT NULL,
+              role VARCHAR(32) NOT NULL,
+              created_at TIMESTAMP NOT NULL,
+              updated_at TIMESTAMP NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_users_username ON users (username);
+            SQL
+
+            IMAGE_URI="${IMAGE_URI}" \
+            POSTGRES_DB="${POSTGRES_DB}" \
+            POSTGRES_USER="${POSTGRES_USER}" \
             BOOTSTRAP_ADMIN_ENABLED="${BOOTSTRAP_ADMIN_ENABLED}" \
             JWT_ISSUER="${JWT_ISSUER}" \
             JWT_AUDIENCE="${JWT_AUDIENCE}" \
