@@ -28,6 +28,7 @@ jobs:
       REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
       BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      APP_OPENAPI_SERVER_URL: ${{ vars.APP_OPENAPI_SERVER_URL }}
 
     steps:
       - name: Checkout
@@ -88,12 +89,13 @@ jobs:
           REDIS_PASSWORD: ${{ env.REDIS_PASSWORD }}
           BOOTSTRAP_ADMIN_PASSWORD: ${{ env.BOOTSTRAP_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ env.JWT_SECRET }}
+          APP_OPENAPI_SERVER_URL: ${{ env.APP_OPENAPI_SERVER_URL }}
         with:
           host: ${{ secrets.AWS_HOST }}
           username: ${{ secrets.AWS_USER }}
           key: ${{ secrets.AWS_SSH_KEY }}
           port: ${{ vars.AWS_PORT || '22' }}
-          envs: AWS_REGION,IMAGE_URI,APP_DIR,POSTGRES_DB,POSTGRES_USER,BOOTSTRAP_ADMIN_ENABLED,JWT_ISSUER,JWT_AUDIENCE,POSTGRES_PASSWORD,REDIS_PASSWORD,BOOTSTRAP_ADMIN_PASSWORD,JWT_SECRET
+          envs: AWS_REGION,IMAGE_URI,APP_DIR,POSTGRES_DB,POSTGRES_USER,BOOTSTRAP_ADMIN_ENABLED,JWT_ISSUER,JWT_AUDIENCE,POSTGRES_PASSWORD,REDIS_PASSWORD,BOOTSTRAP_ADMIN_PASSWORD,JWT_SECRET,APP_OPENAPI_SERVER_URL
           script: |
             set -euo pipefail
 
@@ -154,6 +156,7 @@ jobs:
                   JWT_ISSUER: ${JWT_ISSUER}
                   JWT_AUDIENCE: ${JWT_AUDIENCE}
                   JWT_SECRET: ${JWT_SECRET}
+                  APP_OPENAPI_SERVER_URL: ${APP_OPENAPI_SERVER_URL}
 
             volumes:
               postgres_data:
@@ -170,6 +173,7 @@ jobs:
             REDIS_PASSWORD="${REDIS_PASSWORD}" \
             BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD}" \
             JWT_SECRET="${JWT_SECRET}" \
+            APP_OPENAPI_SERVER_URL="${APP_OPENAPI_SERVER_URL}" \
             docker compose pull
 
             IMAGE_URI="${IMAGE_URI}" \
@@ -182,6 +186,7 @@ jobs:
             REDIS_PASSWORD="${REDIS_PASSWORD}" \
             BOOTSTRAP_ADMIN_PASSWORD="${BOOTSTRAP_ADMIN_PASSWORD}" \
             JWT_SECRET="${JWT_SECRET}" \
+            APP_OPENAPI_SERVER_URL="${APP_OPENAPI_SERVER_URL}" \
             docker compose up -d --remove-orphans
 
             docker image prune -f --filter "until=72h"
