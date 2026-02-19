@@ -10,7 +10,9 @@ import com.aandiclub.auth.user.web.dto.CreateProfileImageUploadUrlResponse
 import com.aandiclub.auth.user.web.dto.MeResponse
 import jakarta.validation.Valid
 import org.springframework.http.MediaType
+import org.springframework.core.io.buffer.DataBufferUtils
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.http.codec.multipart.FormFieldPart
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -19,7 +21,9 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.http.codec.multipart.FilePart
+import org.springframework.http.codec.multipart.Part
 import reactor.core.publisher.Mono
+import java.nio.charset.StandardCharsets
 
 @RestController
 @RequestMapping("/v1/me")
@@ -33,10 +37,16 @@ class UserController(
 	@PatchMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
 	fun updateProfile(
 		@AuthenticationPrincipal user: AuthenticatedUser,
-		@RequestPart(required = false) nickname: String?,
+		@RequestPart(required = false) nickname: Part?,
 		@RequestPart(required = false) profileImage: FilePart?,
 	): Mono<ApiResponse<MeResponse>> =
-		userService.updateProfile(user, nickname, profileImage).map { ApiResponse.success(it) }
+		partToText(nickname)
+			.defaultIfEmpty(NICKNAME_ABSENT_SENTINEL)
+			.flatMap { nicknameText ->
+				val resolvedNickname = if (nicknameText == NICKNAME_ABSENT_SENTINEL) null else nicknameText
+				userService.updateProfile(user, resolvedNickname, profileImage)
+			}
+			.map { ApiResponse.success(it) }
 
 	@PostMapping("/profile-image/upload-url")
 	fun createProfileImageUploadUrl(
@@ -51,4 +61,26 @@ class UserController(
 		@Valid @RequestBody request: ChangePasswordRequest,
 	): Mono<ApiResponse<ChangePasswordResponse>> =
 		userService.changePassword(user, request).map { ApiResponse.success(it) }
+
+	private fun partToText(part: Part?): Mono<String> {
+		if (part == null) {
+			return Mono.empty()
+		}
+		if (part is FormFieldPart) {
+			return Mono.just(part.value())
+		}
+		return DataBufferUtils.join(part.content())
+			.map { dataBuffer ->
+				try {
+					StandardCharsets.UTF_8.decode(dataBuffer.asByteBuffer()).toString()
+				} finally {
+					DataBufferUtils.release(dataBuffer)
+				}
+			}
+			.defaultIfEmpty("")
+	}
+
+	companion object {
+		private const val NICKNAME_ABSENT_SENTINEL = "__NICKNAME_ABSENT__"
+	}
 }
