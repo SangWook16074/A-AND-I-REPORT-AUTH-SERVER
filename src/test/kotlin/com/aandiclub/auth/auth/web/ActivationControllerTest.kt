@@ -26,7 +26,20 @@ class ActivationControllerTest : FunSpec({
 			.exchange()
 			.expectStatus().isOk
 			.expectBody()
-			.jsonPath("$.success").isEqualTo(true)
-			.jsonPath("$.data.success").isEqualTo(true)
+				.jsonPath("$.success").isEqualTo(true)
+				.jsonPath("$.data.success").isEqualTo(true)
+	}
+
+	test("POST /activate rejects invalid username format") {
+		webTestClient.post()
+			.uri("/activate")
+			.contentType(MediaType.APPLICATION_JSON)
+			.bodyValue("""{"token":"invite-token","password":"new-password-123","username":"Invalid Name"}""")
+			.exchange()
+			.expectStatus().isBadRequest
+			.expectBody()
+			.jsonPath("$.success").isEqualTo(false)
+			.jsonPath("$.error.code").isEqualTo("INVALID_REQUEST")
+			.jsonPath("$.error.message").isEqualTo("username must contain only lowercase letters, numbers, and underscore")
 	}
 })
