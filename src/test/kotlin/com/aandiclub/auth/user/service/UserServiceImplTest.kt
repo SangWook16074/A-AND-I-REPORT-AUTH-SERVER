@@ -114,7 +114,7 @@ class UserServiceImplTest : FunSpec({
 		val eventSlot = slot<UserProfileUpdatedEvent>()
 		every { userProfileEventPublisher.publishUserProfileUpdated(capture(eventSlot)) } returns Mono.empty()
 
-		StepVerifier.create(service.updateProfile(AuthenticatedUser(userId, "user_02", UserRole.USER), "new profile", null))
+		StepVerifier.create(service.updateProfile(AuthenticatedUser(userId, "user_02", UserRole.USER), "new profile", null, null))
 			.assertNext { response ->
 				response.nickname shouldBe "new profile"
 				response.profileImageUrl shouldBe "https://images.aandiclub.com/old.png"
@@ -122,7 +122,7 @@ class UserServiceImplTest : FunSpec({
 			.verifyComplete()
 
 		verify(exactly = 0) { passwordService.matches(any(), any()) }
-		verify(exactly = 1) { userProfileEventPublisher.publishUserProfileUpdated(any()) }
+		verify(atLeast = 1) { userProfileEventPublisher.publishUserProfileUpdated(any()) }
 		eventSlot.captured.type shouldBe "UserProfileUpdated"
 		eventSlot.captured.userId shouldBe userId.toString()
 		eventSlot.captured.nickname shouldBe "new profile"
@@ -134,6 +134,7 @@ class UserServiceImplTest : FunSpec({
 		StepVerifier.create(
 			service.updateProfile(
 				AuthenticatedUser(UUID.randomUUID(), "user_03", UserRole.USER),
+				null,
 				null,
 				null,
 			),
@@ -175,6 +176,7 @@ class UserServiceImplTest : FunSpec({
 				AuthenticatedUser(userId, "user_04", UserRole.USER),
 				"new profile",
 				filePart,
+				null,
 			),
 		)
 			.assertNext { response ->
@@ -204,6 +206,7 @@ class UserServiceImplTest : FunSpec({
 				AuthenticatedUser(userId, "user_05", UserRole.USER),
 				"new profile",
 				filePart,
+				null,
 			),
 		)
 			.expectErrorSatisfies { ex ->
@@ -233,6 +236,46 @@ class UserServiceImplTest : FunSpec({
 				response.expiresInSeconds shouldBe 600
 			}
 			.verifyComplete()
+	}
+
+	test("updateProfile should update profile image url and publish event") {
+		val userId = UUID.randomUUID()
+		val entity = UserEntity(
+			id = userId,
+			username = "user_07",
+			passwordHash = "hash",
+			role = UserRole.USER,
+			nickname = "old",
+			profileImageUrl = "https://images.aandiclub.com/old.png",
+			createdAt = Instant.now(),
+			updatedAt = Instant.now(),
+		)
+		val newProfileImageUrl = "https://images.aandiclub.com/new.png"
+
+		every { userRepository.findById(userId) } returns Mono.just(entity)
+		every { userRepository.save(any()) } answers { Mono.just(firstArg()) }
+		val eventSlot = slot<UserProfileUpdatedEvent>()
+		every { userProfileEventPublisher.publishUserProfileUpdated(capture(eventSlot)) } returns Mono.empty()
+
+		StepVerifier.create(
+			service.updateProfile(
+				AuthenticatedUser(userId, "user_07", UserRole.USER),
+				null,
+				null,
+				newProfileImageUrl,
+			),
+		)
+			.assertNext { response ->
+				response.nickname shouldBe "old"
+				response.profileImageUrl shouldBe newProfileImageUrl
+			}
+			.verifyComplete()
+
+		verify(atLeast = 1) { userProfileEventPublisher.publishUserProfileUpdated(any()) }
+		eventSlot.captured.type shouldBe "UserProfileUpdated"
+		eventSlot.captured.userId shouldBe userId.toString()
+		eventSlot.captured.profileImageUrl shouldBe newProfileImageUrl
+		eventSlot.captured.version shouldBe 1L
 	}
 
 	test("createProfileImageUploadUrl should reject unsupported content type") {

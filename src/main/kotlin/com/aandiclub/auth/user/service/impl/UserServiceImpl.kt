@@ -49,8 +49,16 @@ class UserServiceImpl(
 			.switchIfEmpty(Mono.error(AppException(ErrorCode.NOT_FOUND, "User not found.")))
 			.map { toMeResponse(it) }
 
-	override fun updateProfile(user: AuthenticatedUser, nickname: String?, profileImage: FilePart?): Mono<MeResponse> {
-		if (nickname == null && profileImage == null) {
+	override fun updateProfile(
+		user: AuthenticatedUser,
+		nickname: String?,
+		profileImage: FilePart?,
+		profileImageUrl: String?,
+	): Mono<MeResponse> {
+		if (profileImage != null && profileImageUrl != null) {
+			return Mono.error(AppException(ErrorCode.INVALID_REQUEST, "profileImage and profileImageUrl cannot be used together."))
+		}
+		if (nickname == null && profileImage == null && profileImageUrl == null) {
 			return Mono.error(AppException(ErrorCode.INVALID_REQUEST, "At least one profile field is required."))
 		}
 		val normalizedNickname = try {
@@ -58,11 +66,20 @@ class UserServiceImpl(
 		} catch (ex: AppException) {
 			return Mono.error(ex)
 		}
+		val normalizedProfileImageUrl = try {
+			profileImageUrl?.let { normalizeProfileImageUrl(it) }
+		} catch (ex: AppException) {
+			return Mono.error(ex)
+		}
 
 		return userRepository.findById(user.userId)
 			.switchIfEmpty(Mono.error(AppException(ErrorCode.NOT_FOUND, "User not found.")))
 			.flatMap { entity ->
-				val uploadMono = if (profileImage == null) Mono.empty<String>() else uploadProfileImage(user.userId, profileImage)
+				val uploadMono = when {
+					profileImage != null -> uploadProfileImage(user.userId, profileImage)
+					normalizedProfileImageUrl != null -> Mono.just(normalizedProfileImageUrl)
+					else -> Mono.empty<String>()
+				}
 				uploadMono.defaultIfEmpty(entity.profileImageUrl ?: "")
 					.flatMap { uploadedProfileImageUrl ->
 						userRepository.save(
@@ -166,7 +183,7 @@ class UserServiceImpl(
 		UserProfileUpdatedEvent(
 			eventId = UUID.randomUUID().toString(),
 			type = USER_PROFILE_UPDATED_EVENT_TYPE,
-			occurredAt = entity.updatedAt,
+			occurredAt = entity.updatedAt.toString(),
 			userId = requireNotNull(entity.id).toString(),
 			nickname = entity.nickname,
 			profileImageUrl = entity.profileImageUrl,
@@ -183,6 +200,27 @@ class UserServiceImpl(
 				ErrorCode.INVALID_REQUEST,
 				"nickname allows only letters, numbers, spaces, underscores, hyphens, and dots.",
 			)
+		}
+		return normalized
+	}
+
+	private fun normalizeProfileImageUrl(raw: String): String {
+		val normalized = raw.trim()
+		if (normalized.isEmpty()) {
+			throw AppException(ErrorCode.INVALID_REQUEST, "profileImageUrl must not be blank.")
+		}
+		val uri = try {
+			URI(normalized)
+		} catch (_: Exception) {
+			null
+		} ?: throw AppException(ErrorCode.INVALID_REQUEST, "profileImageUrl must be a valid https URL.")
+		val scheme = uri.scheme?.lowercase()
+		val host = uri.host?.lowercase()
+		if (scheme != "https" || host.isNullOrBlank()) {
+			throw AppException(ErrorCode.INVALID_REQUEST, "profileImageUrl must be a valid https URL.")
+		}
+		if (allowedImageHosts.isNotEmpty() && host !in allowedImageHosts) {
+			throw AppException(ErrorCode.INVALID_REQUEST, "profileImageUrl host is not allowed.")
 		}
 		return normalized
 	}

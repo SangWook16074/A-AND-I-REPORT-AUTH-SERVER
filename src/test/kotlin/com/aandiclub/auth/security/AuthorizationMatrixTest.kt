@@ -167,6 +167,24 @@ class AuthorizationMatrixTest : StringSpec() {
 				.jsonPath("$.data.nickname").isEqualTo("new profile")
 		}
 
+		"PATCH /v1/me with profileImageUrl allows USER role" {
+			val userId = UUID.randomUUID()
+			val username = "tester_profile_image_json"
+			insertUser(userId, username, UserRole.USER)
+			val token = accessToken(userId, username, UserRole.USER)
+
+			webClient().patch()
+				.uri("/v1/me")
+				.headers { it.setBearerAuth(token) }
+				.contentType(MediaType.APPLICATION_JSON)
+				.bodyValue("""{"profileImageUrl":"https://images.aandiclub.com/users/avatar.png"}""")
+				.exchange()
+				.expectStatus().isOk
+				.expectBody()
+				.jsonPath("$.success").isEqualTo(true)
+				.jsonPath("$.data.profileImageUrl").isEqualTo("https://images.aandiclub.com/users/avatar.png")
+		}
+
 		"POST /v1/me with multipart file is parsed (not 415) and rejected by policy when upload disabled" {
 			val userId = UUID.randomUUID()
 			val username = "tester_profile_file"
